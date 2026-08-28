@@ -1,4 +1,5 @@
 *.out
 *.o
 *.DS_Store
+.vscode/**
 math_toolkit
