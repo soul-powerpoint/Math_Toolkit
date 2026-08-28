@@ -4,8 +4,53 @@
 
 typedef unsigned __int128 uint128_t;
 
-static uint32_t plaintext = 0xABCDABCD;
+static uint32_t plaintext0 = 0xABCDABCD;
+static uint32_t plaintext1 = 0x01234567;
+static uint32_t plaintext2 = 0xABCDABCD;
+static uint32_t plaintext3 = 0x76543210;
+// static uint8_t *static_key = (uint8_t[]){0x11111111, 0x11111111, 0x11111111, 0x11111111};
 static uint32_t mask = 0x000000FF;
+
+static const uint8_t plaintext[16] = {
+    0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+};
+
+static const uint8_t static_key[16] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
+};
+
+static const uint8_t **malloc_block(uint8_t *plaintext) {
+    uint8_t **block = malloc(sizeof(uint8_t *) * 4);
+
+    for (int i = 0; i < 4; i++) {
+        block[i] = malloc(sizeof(uint8_t) * 4);
+        for (int j = 0; j < 4; j++) {
+            block[i][j] = plaintext[i + 4 * j];
+        }
+    }
+
+    return block;
+}
+
+static const void print_block(uint8_t **block) {
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            printf("%X", block[r][c]);
+            if (c != 3) {
+                putchar(32);
+            }
+        }
+        putchar(10);
+    }
+}
+
+static const void free_block(uint8_t **block) {
+    for (int i = 0; i < 4; i++) {
+        free(block[i]);
+    }
+
+    free(block);
+}
 
 static const uint8_t aes_sbox[256] = {
     0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
@@ -38,8 +83,12 @@ static uint8_t gmul(uint8_t a, uint8_t b) {
     return p;
 }
 
-uint8_t substitute_byte(uint8_t x) {
-    return aes_sbox[x];
+void substitute_byte(uint8_t **block) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            block[i][j] = aes_sbox[block[i][j]];
+        }
+    }
 }
 
 void shift_rows(uint8_t **block) {
@@ -77,38 +126,38 @@ void mix_columns(uint8_t **block) {
     for (int c = 0; c < 4; c++) {
         uint8_t a0 = r0[c], a1 = r1[c], a2 = r2[c], a3 = r3[c];
 
-        r0[c] = gmul(a0,2) ^ gmul(a1,3) ^ gmul(a2,1) ^ gmul(a3,1);
-        r1[c] = gmul(a0,1) ^ gmul(a1,2) ^ gmul(a2,3) ^ gmul(a3,1);
-        r2[c] = gmul(a0,1) ^ gmul(a1,1) ^ gmul(a2,2) ^ gmul(a3,3);
-        r3[c] = gmul(a0,3) ^ gmul(a1,1) ^ gmul(a2,1) ^ gmul(a3,2);
+        r0[c] = gmul(a0, 2) ^ gmul(a1, 3) ^ gmul(a2, 1) ^ gmul(a3, 1);
+        r1[c] = gmul(a0, 1) ^ gmul(a1, 2) ^ gmul(a2, 3) ^ gmul(a3, 1);
+        r2[c] = gmul(a0, 1) ^ gmul(a1, 1) ^ gmul(a2, 2) ^ gmul(a3, 3);
+        r3[c] = gmul(a0, 3) ^ gmul(a1, 1) ^ gmul(a2, 1) ^ gmul(a3, 2);
     }
 }
 
-void add_round_key(uint8_t **block, uint8_t *key) {
+void add_round_key(uint8_t **block, uint8_t *round_key) {
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            block[r][c] ^= key[r * 4 + c];
+            block[r][c] ^= round_key[r * 4 + c];
         }
     }
 }
 
 int main(int argc, char **argv) {
-    printf("%X\n", plaintext);
-    
-    uint8_t b0 = plaintext >> (8 * 3) & mask;
-    uint8_t b1 = plaintext >> (8 * 2) & mask;
-    uint8_t b2 = plaintext >> (8 * 1) & mask;
-    uint8_t b3 = plaintext >> (8 * 0) & mask;
+    uint8_t **block = malloc_block(plaintext);
 
-    printf("%X\n", b0);
-    printf("%X\n", b1);
-    printf("%X\n", b2);
-    printf("%X\n", b3);
+    print_block(block);
+    putchar(10);
 
-    uint8_t b0s = substitute_byte(b0);
-    uint8_t b1s = substitute_byte(b1);
-    uint8_t b2s = substitute_byte(b2);
-    uint8_t b3s = substitute_byte(b3);
+    for (int i = 0; i < 10; i++) {
+        substitute_byte(block);
+        shift_rows(block);
+        mix_columns(block);
 
+        if (i != 9) {
+            add_round_key(block, static_key);
+        }
+    }
+
+    print_block(block);
+    free_block(block);
     return 0;
 }
