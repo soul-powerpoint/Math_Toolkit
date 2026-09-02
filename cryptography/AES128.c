@@ -38,6 +38,13 @@ static const uint8_t aes_sbox[256] = {
     0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
 };
 
+static uint8_t inv_sbox[256];
+
+static void build_inv_sbox(void) {
+    for (int i = 0; i < 256; i++)
+        inv_sbox[aes_sbox[i]] = (uint8_t) i;
+}
+
 static const uint8_t **malloc_block(uint8_t *plaintext) {
     uint8_t **block = malloc(sizeof(uint8_t *) * 4);
 
@@ -119,6 +126,12 @@ void substitute_byte(uint8_t **block) {
     }
 }
 
+void inv_substitute_byte(uint8_t **block) {
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 4; c++)
+            block[r][c] = inv_sbox[block[r][c]];
+}
+
 void shift_rows(uint8_t **block) {
     uint8_t *r0 = block[0];
     uint8_t *r1 = block[1];
@@ -145,6 +158,31 @@ void shift_rows(uint8_t **block) {
     r3[0] = temp;
 }
 
+void inv_shift_rows(uint8_t **block) {
+    uint8_t *r1 = block[1];
+    uint8_t *r2 = block[2];
+    uint8_t *r3 = block[3];
+
+    uint8_t temp = r1[3];
+    r1[3] = r1[2];
+    r1[2] = r1[1];
+    r1[1] = r1[0];
+    r1[0] = temp;
+
+    uint8_t temp0 = r2[0];
+    uint8_t temp1 = r2[1];
+    r2[0] = r2[2];
+    r2[2] = temp0;
+    r2[1] = r2[3];
+    r2[3] = temp1;
+
+    temp = r3[0];
+    r3[0] = r3[1];
+    r3[1] = r3[2];
+    r3[2] = r3[3];
+    r3[3] = temp;
+}
+
 void mix_columns(uint8_t **block) {
     uint8_t *r0 = block[0];
     uint8_t *r1 = block[1];
@@ -158,6 +196,22 @@ void mix_columns(uint8_t **block) {
         r1[c] = gmul(a0, 1) ^ gmul(a1, 2) ^ gmul(a2, 3) ^ gmul(a3, 1);
         r2[c] = gmul(a0, 1) ^ gmul(a1, 1) ^ gmul(a2, 2) ^ gmul(a3, 3);
         r3[c] = gmul(a0, 3) ^ gmul(a1, 1) ^ gmul(a2, 1) ^ gmul(a3, 2);
+    }
+}
+
+void inv_mix_columns(uint8_t **block) {
+    uint8_t *r0 = block[0];
+    uint8_t *r1 = block[1];
+    uint8_t *r2 = block[2];
+    uint8_t *r3 = block[3];
+
+    for (int c = 0; c < 4; c++) {
+        uint8_t a0 = r0[c], a1 = r1[c], a2 = r2[c], a3 = r3[c];
+
+        r0[c] = gmul(a0, 14) ^ gmul(a1, 11) ^ gmul(a2, 13) ^ gmul(a3, 9);
+        r1[c] = gmul(a0, 9) ^ gmul(a1, 14) ^ gmul(a2, 11) ^ gmul(a3, 13);
+        r2[c] = gmul(a0, 13) ^ gmul(a1, 9) ^ gmul(a2, 14) ^ gmul(a3, 11);
+        r3[c] = gmul(a0, 11) ^ gmul(a1, 13) ^ gmul(a2, 9) ^ gmul(a3, 14);
     }
 }
 
@@ -175,6 +229,7 @@ int main(int argc, char **argv) {
 
     uint8_t **block = malloc_block(plaintext);
 
+    printf("Plaintext:\n");
     print_block(block);
     putchar(10);
 
@@ -189,6 +244,24 @@ int main(int argc, char **argv) {
         add_round_key(block, round_keys + 16 * round);
     }
 
+    printf("Ciphertext:\n");
+    print_block(block);
+    putchar(10);
+
+    build_inv_sbox();
+
+    for (int round = 10; round >= 1; round--) {
+        add_round_key(block, round_keys + 16 * round);
+        if (round != 10) {
+            inv_mix_columns(block);
+        }
+        inv_shift_rows(block);
+        inv_substitute_byte(block);
+    }
+
+    add_round_key(block, round_keys);
+
+    printf("Decrpted text\n");
     print_block(block);
     free_block(block);
     return 0;
